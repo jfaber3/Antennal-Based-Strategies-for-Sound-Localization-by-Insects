@@ -1,129 +1,87 @@
-import random
 import numpy as np
 import matplotlib.pyplot as plt
+import code
+from scipy.integrate import solve_ivp
+from scipy import signal
 
-def Hopf_dots(mu, w0, X, Y, Fx, Fy):
-    X_dot = mu*X - w0*Y - X*(X**2 + Y**2) + Fx
-    Y_dot = mu*Y + w0*X - Y*(X**2 + Y**2) + Fy
-    return X_dot, Y_dot
+clrs = ["#FF1F5B","#FFC61E", "#009ADE", "#00CD6C", "#AF58BA", "#F28522"]
 
-def Hopf_RK2(mu, w0, X, Y, Fx, Fy, dt, D):
-    X_noise = ((2*D*dt)**0.5)*random.gauss(0.0, 1.0)
-    Y_noise = ((2*D*dt)**0.5)*random.gauss(0.0, 1.0)
-    Xk1, Yk1 = Hopf_dots(mu, w0, X                   , Y                   , Fx, Fy)
-    Xk2, Yk2 = Hopf_dots(mu, w0, X + Xk1*dt + X_noise, Y + Yk1*dt + Y_noise, Fx, Fy)
-    new_X = X + (dt/2)*(Xk1 + Xk2) + X_noise
-    new_Y = Y + (dt/2)*(Yk1 + Yk2) + Y_noise
-    return new_X, new_Y
-
-def Hopf_RK4(mu, w0, X, Y, Fx, Fy, dt):
-    Xk1, Yk1 = Hopf_dots(mu, w0, X           , Y             , Fx, Fy)
-    Xk2, Yk2 = Hopf_dots(mu, w0, X + Xk1*dt/2, Y + Yk1*dt/2  , Fx, Fy)
-    Xk3, Yk3 = Hopf_dots(mu, w0, X + Xk2*dt/2, Y + Yk2*dt/2  , Fx, Fy)
-    Xk4, Yk4 = Hopf_dots(mu, w0, X + Xk3*dt  , Y + Yk3*dt    , Fx, Fy)
-    new_X = X + (dt/6)*(Xk1 + 2*Xk2 + 2*Xk3 + Xk4)
-    new_Y = Y + (dt/6)*(Yk1 + 2*Yk2 + 2*Yk3 + Yk4)
-    return new_X, new_Y
-
-def HOPF(mu, w0, Forces_x, Forces_y, dt):
-    if mu < 0:
-        r0 = 0
-    else:
-        r0 = mu**0.5
-    phi0 = 2*np.pi*random.random()
-    N = len(Forces_x)
-    X = np.zeros(N, dtype=float)
-    Y = np.zeros(N, dtype=float)
-    X[0] = r0*np.cos(phi0)
-    Y[0] = r0*np.sin(phi0)
-    for i in range(1, N):
-        #X[i], Y[i] = Hopf_RK2(mu, w0, X[i-1], Y[i-1], Forces_x[i-1], Forces_y[i-1], dt, D)
-        X[i], Y[i] = Hopf_RK4(mu, w0, X[i-1], Y[i-1], Forces_x[i-1], Forces_y[i-1], dt)
-    return X, Y
+def Hopf_dots_complex(t, z, mu, w0):
+    F_complex = np.interp(t, tt, F_full_complex)
+    return (mu + w0*1j - abs(z)**2)*z + F_complex
 
 
-tau_shift1 = 10
-tau_shift2 = 3
-tau_shift3 = 0.5
-mu = 0.01
-A0 = 0.01
+F = 0.01
+mu = -0.1
+w0 = 2*np.pi
+num_cyc = 200
+z0 = [0 + 0j]  #initial condition
 dt = 0.001
-num_cyc = 50
-w0 = 1
-N = int(round( num_cyc*2*np.pi/(w0*dt) ))
-tt = np.linspace(-dt*N/2, dt*N/2, N)
-phi0 = 2*np.pi*random.random()
-
-Phi1 = np.pi/( 1 + np.e**(-tt/tau_shift1) )
-Fx1, Fy1 = A0*np.cos(w0*tt + phi0 + Phi1), A0*np.sin(w0*tt + phi0 + Phi1)
-x1, y1 = HOPF(mu, w0, Fx1, Fy1, dt)
-
-Phi2 = np.pi/( 1 + np.e**(-tt/tau_shift2) )
-Fx2, Fy2 = A0*np.cos(w0*tt + phi0 + Phi2), A0*np.sin(w0*tt + phi0 + Phi2)
-x2, y2 = HOPF(mu, w0, Fx2, Fy2, dt)
-
-Phi3 = np.pi/( 1 + np.e**(-tt/tau_shift3) )
-Fx3, Fy3 = A0*np.cos(w0*tt + phi0 + Phi3), A0*np.sin(w0*tt + phi0 + Phi3)
-x3, y3 = HOPF(mu, w0, Fx3, Fy3, dt)
+pts_per_cycle = int(round(2*np.pi/(w0*dt)))
+N     = num_cyc*pts_per_cycle
+tt = np.linspace(-N*dt/2, N*dt/2, N)
+tau_shift1 = 3
+tau_shift2 = 1  #tau = d/v.  T=1/400 sec. tau/T = 400*1cm/(1 m/s)
+tau_shift3 = 0.3
+Phi1 = np.pi/( 1 + np.exp(-tt/tau_shift1) )
+Phi2 = np.pi/( 1 + np.exp(-tt/tau_shift2) )
+Phi3 = np.pi/( 1 + np.exp(-tt/tau_shift3) )
+#Phi1 = np.pi*(  0.5*(tt/tau_shift1)/np.sqrt(1 + (tt/tau_shift1)**2 )  + 0.5  ) 
+#Phi2 = np.pi*(  0.5*(tt/tau_shift2)/np.sqrt(1 + (tt/tau_shift2)**2 )  + 0.5  )
+#Phi3 = np.pi*(  0.5*(tt/tau_shift3)/np.sqrt(1 + (tt/tau_shift3)**2 )  + 0.5  )
+#Phi1 = np.pi*(  3*(tt/tau_shift1)/(1 + (tt/tau_shift1)**2 )  ) 
+#Phi2 = np.pi*(  3*(tt/tau_shift2)/(1 + (tt/tau_shift2)**2 )  )
+#Phi3 = np.pi*(  3*(tt/tau_shift3)/(1 + (tt/tau_shift3)**2 )  )
 
 
+F_full_complex = F*np.exp(1j*(w0*tt + Phi1))
+sol = solve_ivp(Hopf_dots_complex, (tt[0], tt[-1]), z0, args=(mu, w0), t_eval=tt, method='RK45')
+x1 = np.real(sol.y[0])
+
+F_full_complex = F*np.exp(1j*(w0*tt + Phi2))
+sol = solve_ivp(Hopf_dots_complex, (tt[0], tt[-1]), z0, args=(mu, w0), t_eval=tt, method='RK45')
+x2 = np.real(sol.y[0])
+
+F_full_complex = F*np.exp(1j*(w0*tt + Phi3))
+sol = solve_ivp(Hopf_dots_complex, (tt[0], tt[-1]), z0, args=(mu, w0), t_eval=tt, method='RK45')
+x3 = np.real(sol.y[0])
 
 
+x_limit = 30
+y_limit = 0.15
 fig = plt.figure(figsize=(10, 3))
-plt.subplots_adjust(left=0.08, right=0.95, bottom=0.15, top=0.85, wspace=0.3, hspace=0.3)
+plt.subplots_adjust(left=0.08, right=0.97, bottom=0.17, top=0.86, wspace=0.3)
 ax1  = plt.subplot2grid((1, 3), (0,0), colspan=1, rowspan=1)
 ax2  = plt.subplot2grid((1, 3), (0,1), colspan=1, rowspan=1)
 ax3  = plt.subplot2grid((1, 3), (0,2), colspan=1, rowspan=1)
 ax1.plot(tt, x1, color='black')
-ax1.plot(tt, (Phi1/np.pi - 1/2), "--", color='red')
-ax1.set_xlim(-100, 100)
-ax1.set_ylim(-0.6, 0.6)
-ax1.set_xlabel("Time")
-ax1.set_ylabel(r'$x(t)$')
-ax1.set_xticks([])
-ax1.set_yticks([])
+ax1.plot(tt, 0.22*(Phi1/np.pi - 1/2), "--", color='red')
+ax1.set_xlim(-x_limit, x_limit)
+ax1.set_ylim(-y_limit, y_limit)
+ax1.set_xlabel("Time (cycles)")
+ax1.set_ylabel(r'$\Re[z(t)]$')
 ax2.plot(tt, x2, color='black')
-ax2.plot(tt, (Phi2/np.pi - 1/2), "--", color='red')
-ax2.set_xlim(-100, 100)
-ax2.set_ylim(-0.6, 0.6)
-ax2.set_xlabel("Time")
-ax2.set_ylabel(r'$x(t)$')
-ax2.set_xticks([])
-ax2.set_yticks([])
+ax2.plot(tt, 0.22*(Phi2/np.pi - 1/2), "--", color='red')
+ax2.set_xlim(-x_limit, x_limit)
+ax2.set_ylim(-y_limit, y_limit)
+ax2.set_xlabel("Time (cycles)")
 ax3.plot(tt, x3, color='black')
-ax3.plot(tt, (Phi3/np.pi - 1/2), "--", color='red')
-ax3.set_xlim(-100, 100)
-ax3.set_ylim(-0.6, 0.6)
-ax3.set_xlabel("Time")
-ax3.set_ylabel(r'$x(t)$')
-ax3.set_xticks([])
-ax3.set_yticks([])
-ax1.text(-0.07, 1.15, "A", transform=ax1.transAxes, fontsize=15, fontweight='bold', va='top', ha='right')
-ax2.text(-0.07, 1.15, "B", transform=ax2.transAxes, fontsize=15, fontweight='bold', va='top', ha='right')
-ax3.text(-0.07, 1.15, "C", transform=ax3.transAxes, fontsize=15, fontweight='bold', va='top', ha='right')
+ax3.plot(tt, 0.22*(Phi3/np.pi - 1/2), "--", color='red')
+ax3.set_xlim(-x_limit, x_limit)
+ax3.set_ylim(-y_limit, y_limit)
+ax3.set_xlabel("Time (cycles)")
+ax1.text(-0.1, 1.15, "A", transform=ax1.transAxes, fontsize=14, fontweight='bold', va='top', ha='right')
+ax2.text(-0.1, 1.15, "B", transform=ax2.transAxes, fontsize=14, fontweight='bold', va='top', ha='right')
+ax3.text(-0.1, 1.15, "C", transform=ax3.transAxes, fontsize=14, fontweight='bold', va='top', ha='right')
 
-#plt.savefig(r'C:\Users\Justin\Desktop\Fig2.jpeg', dpi=300)
+plt.savefig("C:/Users/Justin/Desktop/Phase_shift.jpeg", dpi=300)
 
 
+plt.show()
 
 
 
+code.interact(local=locals())  #allows interaction with variables in terminal after
 
-
-
-
-'''
-r = (x**2 + y**2)**0.5
-
-plt.figure()
-plt.plot(x)
-plt.plot(Phi/np.pi - 1/2)
-plt.plot(r, color='red')
-plt.plot(Fx, color='black')
-
-plt.figure()
-plt.plot(x)
-plt.plot(Phi/np.pi - 1/2)
-'''
 
 

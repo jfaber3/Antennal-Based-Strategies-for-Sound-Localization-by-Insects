@@ -1,128 +1,80 @@
-import random
 import numpy as np
 import matplotlib.pyplot as plt
+import code
+from scipy.integrate import solve_ivp
 from scipy import signal
 
-def Hopf_dots(mu, w0, X, Y, Fx, Fy):
-    X_dot = mu*X - w0*Y - X*(X**2 + Y**2) + Fx
-    Y_dot = mu*Y + w0*X - Y*(X**2 + Y**2) + Fy
-    return X_dot, Y_dot
+clrs = ["#FF1F5B","#FFC61E", "#009ADE", "#00CD6C", "#AF58BA", "#F28522"]
 
-def Hopf_RK2(mu, w0, X, Y, Fx, Fy, dt, D):
-    X_noise = ((2*D*dt)**0.5)*random.gauss(0.0, 1.0)
-    Y_noise = ((2*D*dt)**0.5)*random.gauss(0.0, 1.0)
-    Xk1, Yk1 = Hopf_dots(mu, w0, X                   , Y                   , Fx, Fy)
-    Xk2, Yk2 = Hopf_dots(mu, w0, X + Xk1*dt + X_noise, Y + Yk1*dt + Y_noise, Fx, Fy)
-    new_X = X + (dt/2)*(Xk1 + Xk2) + X_noise
-    new_Y = Y + (dt/2)*(Yk1 + Yk2) + Y_noise
-    return new_X, new_Y
-
-def Hopf_RK4(mu, w0, X, Y, Fx, Fy, dt):
-    Xk1, Yk1 = Hopf_dots(mu, w0, X           , Y             , Fx, Fy)
-    Xk2, Yk2 = Hopf_dots(mu, w0, X + Xk1*dt/2, Y + Yk1*dt/2  , Fx, Fy)
-    Xk3, Yk3 = Hopf_dots(mu, w0, X + Xk2*dt/2, Y + Yk2*dt/2  , Fx, Fy)
-    Xk4, Yk4 = Hopf_dots(mu, w0, X + Xk3*dt  , Y + Yk3*dt    , Fx, Fy)
-    new_X = X + (dt/6)*(Xk1 + 2*Xk2 + 2*Xk3 + Xk4)
-    new_Y = Y + (dt/6)*(Yk1 + 2*Yk2 + 2*Yk3 + Yk4)
-    return new_X, new_Y
-
-def HOPF(mu, w0, Forces_x, Forces_y, dt):
-    if mu < 0:
-        r0 = 0
-    else:
-        r0 = mu**0.5
-    phi0 = 2*np.pi*random.random()
-    N = len(Forces_x)
-    X = np.zeros(N, dtype=float)
-    Y = np.zeros(N, dtype=float)
-    X[0] = r0*np.cos(phi0)
-    Y[0] = r0*np.sin(phi0)
-    for i in range(1, N):
-        #X[i], Y[i] = Hopf_RK2(mu, w0, X[i-1], Y[i-1], Forces_x[i-1], Forces_y[i-1], dt, D)
-        X[i], Y[i] = Hopf_RK4(mu, w0, X[i-1], Y[i-1], Forces_x[i-1], Forces_y[i-1], dt)
-    return X, Y
+def Hopf_dots_complex(t, z, mu, w0):
+    F_complex = np.interp(t, tt, F_full_complex)
+    return (mu + w0*1j - abs(z)**2)*z + F_complex
 
 
+mu = -0.1
+w0 = 2*np.pi
+num_cyc = 8000
+num_cyc_cut = 100
+z0 = [0 + 0j]   #[mu**0.5 + 0j]  #initial condition
+Ff = 1
+Fm = 1
+dt = 0.01
+pts_per_cycle = int(round(2*np.pi/(w0*dt)))
+N     = num_cyc*pts_per_cycle
+N_cut = num_cyc_cut*pts_per_cycle
+print(N, N_cut)
+tt = np.linspace(0, (N+N_cut-1)*dt, N+N_cut)
+tt_mid = num_cyc_cut + num_cyc/2
+time_scale =200
+Wf = 0.96*w0  -  0.0048*w0*( (tt-tt_mid)/time_scale )/np.sqrt(1 + ((tt-tt_mid)/time_scale)**2)  #+- 1% shift (2% total shift)
+Phi_f = np.cumsum( Wf*dt )
+wm = 1.04*w0
+F_female = Ff*np.exp(1j*Phi_f)
+F_male   = Fm*np.exp(1j*wm*tt)
+
+F_full_complex = F_female + F_male
+sol = solve_ivp(Hopf_dots_complex, (0, num_cyc+num_cyc_cut), z0, args=(mu, w0), t_eval=tt, method='RK45')
+z = sol.y[0]
+z = z[N_cut:]
+x = np.real(z)
 
 
-#MODULATED SIGNAL FUNCTIONS
+plt.figure(figsize=(5, 5))
+Pxx, freqs, t_bins, im = plt.specgram(x, NFFT=160*pts_per_cycle, Fs=1/dt, noverlap=0, scale='linear', 
+                                        mode='magnitude', cmap='Greys', vmin=0, vmax=0.004)
+delta_f = freqs[1]-freqs[0]
+plt.plot(tt[:-N_cut], wm*np.ones(N)/(2*np.pi), "-", color=clrs[2])
+plt.plot(tt[:-N_cut], Wf[N_cut:]/(2*np.pi), "-", color=clrs[2])
+plt.plot(tt[:-N_cut], (2*Wf[N_cut:] - 1*wm)/(2*np.pi), "-", color=clrs[0])
+plt.plot(tt[:-N_cut], (3*Wf[N_cut:] - 2*wm)/(2*np.pi), "-", color=clrs[0])
+plt.plot(tt[:-N_cut], (4*Wf[N_cut:] - 3*wm)/(2*np.pi), "-", color=clrs[0])
+plt.plot(tt[:-N_cut], (5*Wf[N_cut:] - 4*wm)/(2*np.pi), "-", color=clrs[0])
+plt.plot(tt[:-N_cut], (6*Wf[N_cut:] - 5*wm)/(2*np.pi), "-", color=clrs[0])
+plt.ylim(0.6, 1.1)
+plt.xticks([0, 2000, 4000, 6000, 8000])
+plt.xlabel("Time (cycles)")
+plt.ylabel("Frequency (cycles$^{-1}$)")
+plt.text(6000, 1.08, "$\omega_2$")
+plt.text(6000, 0.99, "$\omega_1$")
+plt.text(6000, 0.9, "$2\omega_1 - \omega_2$")
+plt.text(6000, 0.81, "$3\omega_1 - 2\omega_2$")
+plt.text(6000, 0.725, "$4\omega_1 - 3\omega_2$")
+plt.text(6000, 0.64, "$5\omega_1 - 4\omega_2$")
 
-def move_avg(x, window):
-    if window%2 != 1:
-        print("window must be odd")
-        window += 1
-    filt_x = np.zeros(len(x), dtype=float)
-    for i in range(int(window/2),  len(x) - int(window/2)):  # filter middle of data
-        filt_x[i] = sum(x[i - int(window/2):i + int(window/2) + 1])/window
-    for i in range(int(window/2)):  # filter ends of data
-        filt_x[i] = sum(x[0:(i + int(window/2))]) / len(x[0:(i + int(window/2))])
-        filt_x[len(x) - 1 - i] = sum(x[(len(x) - i - int(window/2)):len(x)]) / len(x[(len(x) - i - int(window/2)):len(x)])
-    return filt_x
+plt.savefig("C:/Users/Justin/Desktop/DP_modulation.jpeg", dpi=300)
 
-def FFT(x, framerate):
-    N = len(x)
-    xf = np.fft.fft(x)
-    f = np.linspace(0.0, framerate/2, int(N/2))
-    xff = (2.0/N)*np.abs(xf[0:int(N/2)])
-    return f, xff
+plt.show()
 
-def PSD(x, framerate):
-    N = len(x)
-    xf = np.fft.fft(x)
-    f = np.linspace(0.0, framerate/2, int(N/2))
-    xff = (2.0/(N*framerate))*np.abs(xf[0:int(N/2)])**2
-    return f, xff
+code.interact(local=locals())  #allows interaction with variables in terminal after
 
-def LP_filter(x, framerate, cutoff_f):
-    N = len(x)
-    xf = np.fft.fft(x)
-    f = np.linspace(0.0, framerate/2, int(N/2))
-    for i in range(len(f)):
-        if f[i] > cutoff_f:
-            xf[i] = 0.0 + 0.0j
-            xf[len(xf)-i-1] = 0.0 + 0.0j
-    return np.real(np.fft.ifft(xf))
 
-def generate_FM_signal(dt, N, F, w, w_dev):
-    Dw = np.random.normal(0, w_dev, N)
-    Dw = LP_filter(Dw, 2*np.pi/dt, 1*w)
-    Dw *= w_dev/Dw.std()
-    phase = np.zeros(N)
-    phase[0] = 2*np.pi*random.random()  #-np.pi/2
-    for i in range(1, len(phase)):
-        phase[i] = phase[i-1] + (w + Dw[i])*dt
-    return F*np.cos(phase), F*np.sin(phase)
 
-def Freq_Sweep_Mask(total_power, w0, w_dev_range, w_sweep, N, dt):   #linearly increasing freq sweep
-    Ws = np.zeros(N)
-    Ws[0] = w0 - w_dev_range
-    sweep_rate = (w_sweep/w0) * 2*w_dev_range/(2*np.pi/w0)  #(rad/s)/s
-    for i in range(1, len(Ws)):
-        Ws[i] = Ws[i-1] + sweep_rate*dt
-        if Ws[i] > w0 + w_dev_range:
-            Ws[i] = w0 - w_dev_range
-    phases = np.zeros(N)
-    phases[0] = 2*np.pi*random.random()
-    for i in range(1, len(phases)):
-        phases[i] = phases[i-1] + Ws[i]*dt
-    x, y = np.cos(phases), np.sin(phases)
-    x *= ((total_power/2)**0.5)/x.std()
-    y *= ((total_power/2)**0.5)/y.std()
-    return x, y
-
-def sin_FM_stim(tt, F, w_center, mod_range, mod_w):
-    W = mod_range * np.sin(mod_w*tt) + w_center
-    phase = np.zeros(len(tt))
-    dt = tt[1] - tt[0]
-    phase[0] = 0  #2*np.pi*random.random()  #-np.pi/2
-    for i in range(1, len(phase)):
-        phase[i] = phase[i-1] + W[i-1]*dt
-    return F*np.cos(phase), F*np.sin(phase), W
+'''
 
 
 
 dt = 0.01*2*np.pi            #0.001*2*np.pi for 1000 pts per cycle,    dt*w0 = 0.001*2pi,     use 0.01*2pi as shortcut
-num_cyc = 40000  #10k or 100k
+num_cyc = 10000  #10k or 100k
 num_cut = 500
 w0 = 1.0
 mu = -0.1
@@ -144,22 +96,7 @@ x, y = x[N_cut:], y[N_cut:]
 f, xf = FFT(x, 2*np.pi/dt)
 
 
-'''
-plt.figure()
-plt.plot(f, xf)
-plt.xlim(0.9, 1.1)
-plt.ylim(0.01, 10)
-plt.yscale("log")
 
-window = 100000
-plt.figure()
-for i in range(0, 10):
-    f, xf = FFT(x[i*window:(i+1)*window], 2*np.pi/dt)
-    plt.plot(f, xf)
-plt.xlim(0.9, 1.1)
-plt.ylim(0.01, 10)
-plt.yscale("log")
-'''
 
 
 plt.figure(figsize=(6, 4))
@@ -173,7 +110,7 @@ plt.xlabel("Time (cycles)")
 plt.ylabel("Frequency (Hz)")
 plt.xlim(0, num_cyc)
 plt.show()
-
+'''
 
 #plt.savefig(r'C:\Users\Justin\Desktop\Fig3.jpeg', dpi=300)
 
